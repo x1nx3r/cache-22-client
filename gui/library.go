@@ -5,8 +5,8 @@ import (
 	"os/exec"
 	"path/filepath"
 
-	"github.com/cache-22/cache-22-client/internal/api"
-	"github.com/cache-22/cache-22-client/internal/store"
+	"github.com/x1nx3r/cache-22-client/internal/api"
+	"github.com/x1nx3r/cache-22-client/internal/store"
 )
 
 type GameInfo struct {

@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/cache-22/cache-22-client/internal/config"
+	"github.com/x1nx3r/cache-22-client/internal/config"
 )
 
 func testConfig(t *testing.T) config.Config {

@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/cache-22/cache-22-client/internal/api"
+	"github.com/x1nx3r/cache-22-client/internal/api"
 )
 
 type ServerEntry struct {

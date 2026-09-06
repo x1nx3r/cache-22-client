@@ -7,7 +7,7 @@ import (
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
-	parentconfig "github.com/cache-22/cache-22-client/internal/config"
+	parentconfig "github.com/x1nx3r/cache-22-client/internal/config"
 )
 
 //go:embed all:frontend/dist

@@ -10,13 +10,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cache-22/cache-22-client/internal/api"
-	"github.com/cache-22/cache-22-client/internal/fusefs"
-	"github.com/cache-22/cache-22-client/internal/joy"
-	"github.com/cache-22/cache-22-client/internal/pcsx2"
-	"github.com/cache-22/cache-22-client/internal/profile"
-	"github.com/cache-22/cache-22-client/internal/store"
-	"github.com/cache-22/cache-22-client/internal/syncer"
+	"github.com/x1nx3r/cache-22-client/internal/api"
+	"github.com/x1nx3r/cache-22-client/internal/fusefs"
+	"github.com/x1nx3r/cache-22-client/internal/joy"
+	"github.com/x1nx3r/cache-22-client/internal/pcsx2"
+	"github.com/x1nx3r/cache-22-client/internal/profile"
+	"github.com/x1nx3r/cache-22-client/internal/store"
+	"github.com/x1nx3r/cache-22-client/internal/syncer"
 )
 
 var ErrNoBIOS = errors.New("no PS2 BIOS found, dump yours from a real PS2 then use Select BIOS file")

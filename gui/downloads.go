@@ -4,9 +4,9 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/cache-22/cache-22-client/internal/api"
-	"github.com/cache-22/cache-22-client/internal/store"
-	"github.com/cache-22/cache-22-client/internal/syncer"
+	"github.com/x1nx3r/cache-22-client/internal/api"
+	"github.com/x1nx3r/cache-22-client/internal/store"
+	"github.com/x1nx3r/cache-22-client/internal/syncer"
 )
 
 type DownloadStatus struct {

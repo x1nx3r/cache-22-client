@@ -1,4 +1,4 @@
-module github.com/cache-22/cache-22-client
+module github.com/x1nx3r/cache-22-client
 
 go 1.24
 

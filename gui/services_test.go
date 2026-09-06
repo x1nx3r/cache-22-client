@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cache-22/cache-22-client/internal/store"
+	"github.com/x1nx3r/cache-22-client/internal/store"
 )
 
 func TestServerRegistry(t *testing.T) {

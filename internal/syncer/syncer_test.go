@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cache-22/cache-22-client/internal/api"
-	"github.com/cache-22/cache-22-client/internal/store"
+	"github.com/x1nx3r/cache-22-client/internal/api"
+	"github.com/x1nx3r/cache-22-client/internal/store"
 )
 
 func patternData(n int) []byte {
