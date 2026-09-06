@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.0
+Name=My Product
+Comment=A cache22 application
+# The Exec line includes %u to pass the URL to the application
+Exec=/usr/local/bin/cache22 %u
+Terminal=false
+Type=Application
+Icon=cache22
+Categories=Utility;
+StartupWMClass=cache22
+
+ 

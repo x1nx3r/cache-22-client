@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=cache22
+Exec=cache22
+Icon=cache22
+Categories=Development;
+Terminal=false
+Keywords=wails
+Version=1.0
+StartupNotify=false

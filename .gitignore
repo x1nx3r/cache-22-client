@@ -1,0 +1,25 @@
+# built binaries & sidecars
+/bin/
+**/bin/
+*.AppImage
+
+# frontend deps & build output (bindings/ IS tracked - regenerate with wails3 generate bindings)
+gui/frontend/node_modules/
+gui/frontend/dist/
+
+# local env (never commit real secrets)
+/.env
+.env.*.local
+
+# local data
+data/
+
+# go test artifacts
+*.test
+coverage.out
+
+# editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
