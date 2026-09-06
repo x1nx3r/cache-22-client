@@ -358,6 +358,7 @@ export default function App() {
     const dialogRef = useRef(null);
     const serversRef = useRef([]);
     serversRef.current = servers;
+    const lastSaveSeq = useRef(0);
 
     const toast = useCallback((msg, kind) => {
         kind = kind || "info";
@@ -497,6 +498,13 @@ export default function App() {
     }, [refreshServers, biosStatus, refreshLink]);
 
     useEffect(() => { loadLibrary(); }, [loadLibrary]);
+
+    useEffect(() => {
+        if (emu.saveSeq && emu.saveSeq !== lastSaveSeq.current) {
+            lastSaveSeq.current = emu.saveSeq;
+            toast(emu.saveMsg, emu.saveOk ? "success" : "error");
+        }
+    }, [emu]);
 
     useEffect(() => {
         const tick = async () => {

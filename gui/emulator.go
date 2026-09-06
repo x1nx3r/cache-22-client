@@ -15,6 +15,7 @@ import (
 	"github.com/x1nx3r/cache-22-client/internal/joy"
 	"github.com/x1nx3r/cache-22-client/internal/pcsx2"
 	"github.com/x1nx3r/cache-22-client/internal/profile"
+	"github.com/x1nx3r/cache-22-client/internal/save"
 	"github.com/x1nx3r/cache-22-client/internal/store"
 	"github.com/x1nx3r/cache-22-client/internal/syncer"
 )
@@ -31,7 +32,7 @@ type EmulatorService struct {
 	mu    sync.Mutex
 	probe api.ProbeResult
 
-	proc     *exec.Cmd
+	proc      *exec.Cmd
 	runSerial string
 	runTitle  string
 	runSince  time.Time
@@ -39,6 +40,10 @@ type EmulatorService struct {
 	stage      string
 	stageDone  int64
 	stageTotal int64
+
+	saveSeq int64
+	saveMsg string
+	saveOk  bool
 }
 
 type EmuStatus struct {
@@ -49,6 +54,9 @@ type EmuStatus struct {
 	Stage      string `json:"stage"`
 	StageDone  int64  `json:"stageDone"`
 	StageTotal int64  `json:"stageTotal"`
+	SaveSeq    int64  `json:"saveSeq"`
+	SaveMsg    string `json:"saveMsg"`
+	SaveOk     bool   `json:"saveOk"`
 }
 
 type FetchTier struct {
@@ -148,10 +156,23 @@ func (e *EmulatorService) setStage(stage string, done, total int64) {
 func (e *EmulatorService) EmuStatus() (EmuStatus, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	if e.proc == nil {
-		return EmuStatus{Stage: e.stage, StageDone: e.stageDone, StageTotal: e.stageTotal}, nil
+	st := EmuStatus{
+		Stage: e.stage, StageDone: e.stageDone, StageTotal: e.stageTotal,
+		SaveSeq: e.saveSeq, SaveMsg: e.saveMsg, SaveOk: e.saveOk,
 	}
-	return EmuStatus{Running: true, Serial: e.runSerial, Title: e.runTitle, SinceUnix: e.runSince.Unix()}, nil
+	if e.proc == nil {
+		return st, nil
+	}
+	st.Running = true
+	st.Serial, st.Title, st.SinceUnix = e.runSerial, e.runTitle, e.runSince.Unix()
+	return st, nil
+}
+
+func (e *EmulatorService) noteSave(ok bool, msg string) {
+	e.mu.Lock()
+	e.saveSeq++
+	e.saveMsg, e.saveOk = msg, ok
+	e.mu.Unlock()
 }
 
 func (e *EmulatorService) StopEmulator() error {
@@ -210,6 +231,168 @@ func (e *EmulatorService) LastProbe() (*api.ProbeResult, error) {
 	return &p, nil
 }
 
+// installCard copies the library card into the working slot file.
+func installCard(dataDir, serial string, slot int) error {
+	return save.CopyFile(save.WorkingCard(dataDir, slot), save.LocalCard(dataDir, serial, slot))
+}
+
+// prepareSaves syncs both slots for a game before launch. It never fails
+// hard: offline or undecided states fall back to local cards with a notice.
+func (e *EmulatorService) prepareSaves(c *api.Client, serial string) {
+	e.setStage("Syncing saves", 0, 0)
+	st := save.LoadState(e.dataDir)
+	dirty := false
+	offline := false
+	pulled := false
+	for _, slot := range []int{1, 2} {
+		lib := save.LocalCard(e.dataDir, serial, slot)
+		localHash, lerr := save.HashFile(lib)
+		last, synced := st.Get(serial, slot)
+		srvMeta, srvOk, herr := c.HeadSave(serial, slot)
+		if herr != nil {
+			offline = true
+			if lerr == nil {
+				_ = installCard(e.dataDir, serial, slot)
+			}
+			continue
+		}
+		if !srvOk {
+			if lerr == nil {
+				_ = installCard(e.dataDir, serial, slot)
+				st = st.Set(serial, slot, save.Synced{SHA: localHash})
+				dirty = true
+			} else if wh, werr := save.HashFile(save.WorkingCard(e.dataDir, slot)); werr == nil {
+				// Adopt the working card as this game's card (first boot).
+				_ = save.CopyFile(lib, save.WorkingCard(e.dataDir, slot))
+				st = st.Set(serial, slot, save.Synced{SHA: wh})
+				dirty = true
+			}
+			continue
+		}
+		if lerr != nil {
+			// No local card: take the server's.
+			if raw, _, gerr := c.GetSave(serial, slot); gerr == nil {
+				_ = os.MkdirAll(filepath.Dir(lib), 0o755)
+				_ = os.WriteFile(lib, raw, 0o644)
+				_ = installCard(e.dataDir, serial, slot)
+				st = st.Set(serial, slot, save.Synced{SHA: srvMeta.SHA})
+				dirty, pulled = true, true
+			} else {
+				offline = true
+			}
+			continue
+		}
+		if !synced {
+			if localHash == srvMeta.SHA {
+				st = st.Set(serial, slot, save.Synced{SHA: localHash})
+				dirty = true
+				_ = installCard(e.dataDir, serial, slot)
+			} else {
+				e.resolveSaveConflict(c, st, serial, slot, localHash, srvMeta, &dirty, &pulled)
+				st = save.LoadState(e.dataDir)
+			}
+			continue
+		}
+		if localHash == last.SHA {
+			if srvMeta.SHA != last.SHA {
+				if raw, _, gerr := c.GetSave(serial, slot); gerr == nil {
+					_ = os.WriteFile(lib, raw, 0o644)
+					_ = installCard(e.dataDir, serial, slot)
+					st = st.Set(serial, slot, save.Synced{SHA: srvMeta.SHA})
+					dirty, pulled = true, true
+				} else {
+					offline = true
+				}
+			} else {
+				_ = installCard(e.dataDir, serial, slot)
+			}
+			continue
+		}
+		if srvMeta.SHA == last.SHA {
+			_ = installCard(e.dataDir, serial, slot)
+			st = st.Set(serial, slot, save.Synced{SHA: localHash})
+			dirty = true
+			continue
+		}
+		e.resolveSaveConflict(c, st, serial, slot, localHash, srvMeta, &dirty, &pulled)
+		st = save.LoadState(e.dataDir)
+	}
+	if dirty {
+		_ = save.SaveState(e.dataDir, st)
+	}
+	switch {
+	case offline:
+		e.noteSave(false, "Saves offline, using local cards")
+	case pulled:
+		e.noteSave(true, "Downloaded cloud save")
+	}
+}
+
+// resolveSaveConflict settles a both-sides-changed slot by mtime, backing
+// up the loser locally. Caller reloads state afterwards.
+func (e *EmulatorService) resolveSaveConflict(c *api.Client, st save.State, serial string, slot int, localHash string, srvMeta api.SaveMeta, dirty, pulled *bool) {
+	lib := save.LocalCard(e.dataDir, serial, slot)
+	var localMT time.Time
+	if fi, err := os.Stat(lib); err == nil {
+		localMT = fi.ModTime()
+	}
+	if !srvMeta.Updated.IsZero() && srvMeta.Updated.After(localMT) {
+		_ = save.BackupLocal(e.dataDir, serial, slot)
+		if raw, _, gerr := c.GetSave(serial, slot); gerr == nil {
+			_ = os.WriteFile(lib, raw, 0o644)
+			_ = installCard(e.dataDir, serial, slot)
+			st = st.Set(serial, slot, save.Synced{SHA: srvMeta.SHA})
+			_ = save.SaveState(e.dataDir, st)
+			*dirty, *pulled = true, true
+			e.noteSave(true, "Save conflict: server copy won, local backup kept")
+			return
+		}
+	}
+	_ = installCard(e.dataDir, serial, slot)
+	st = st.Set(serial, slot, save.Synced{SHA: localHash})
+	_ = save.SaveState(e.dataDir, st)
+	*dirty = true
+	e.noteSave(true, "Save conflict: local copy won")
+}
+
+// pushSaves uploads changed working cards after the emulator exits.
+func (e *EmulatorService) pushSaves(c *api.Client, serial string) {
+	st := save.LoadState(e.dataDir)
+	dirty := false
+	pushed := false
+	failed := false
+	for _, slot := range []int{1, 2} {
+		workHash, werr := save.HashFile(save.WorkingCard(e.dataDir, slot))
+		if werr != nil {
+			continue
+		}
+		if last, ok := st.Get(serial, slot); ok && last.SHA == workHash {
+			continue
+		}
+		raw, err := os.ReadFile(save.WorkingCard(e.dataDir, slot))
+		if err != nil {
+			continue
+		}
+		meta, err := c.PutSave(serial, slot, raw)
+		if err != nil {
+			failed = true
+			continue
+		}
+		_ = save.CopyFile(save.LocalCard(e.dataDir, serial, slot), save.WorkingCard(e.dataDir, slot))
+		st = st.Set(serial, slot, save.Synced{SHA: meta.SHA})
+		dirty, pushed = true, true
+	}
+	if dirty {
+		_ = save.SaveState(e.dataDir, st)
+	}
+	switch {
+	case pushed:
+		e.noteSave(true, "Cloud saves synced")
+	case failed:
+		e.noteSave(false, "Save upload failed, kept locally")
+	}
+}
+
 func (e *EmulatorService) Play(serial string) error {
 	if !pcsx2.HasBIOS(e.dataDir) {
 		return ErrNoBIOS
@@ -245,6 +428,7 @@ func (e *EmulatorService) Play(serial string) error {
 		e.setStage("Failed: storage error", 0, 0)
 		return err
 	}
+	e.prepareSaves(c, m.Serial)
 	e.setStage("Probing link", 0, 0)
 	link, err := c.Probe(m.Serial)
 	if err != nil {
@@ -334,6 +518,7 @@ func (e *EmulatorService) Play(serial string) error {
 		defer stopTrace()
 		defer s.Close()
 		_ = cmd.Wait()
+		e.pushSaves(c, m.Serial)
 		e.mu.Lock()
 		if e.proc == cmd {
 			e.proc = nil

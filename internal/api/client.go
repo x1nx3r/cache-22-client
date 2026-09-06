@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
+	"time"
 )
 
 type Game struct {
@@ -136,4 +138,97 @@ func Login(base, username, password string) (string, error) {
 		Token string `json:"token"`
 	}
 	return out.Token, json.NewDecoder(res.Body).Decode(&out)
+}
+
+type SaveMeta struct {
+	SHA     string
+	Size    int64
+	Updated time.Time
+}
+
+// GetSave fetches a memory card. Returns os.ErrNotExist wrapped when the
+// server has never seen one (HTTP 404).
+func (c *Client) GetSave(serial string, slot int) ([]byte, SaveMeta, error) {
+	var meta SaveMeta
+	res, err := c.get("/v1/saves/" + url.PathEscape(serial) + "/" + strconv.Itoa(slot))
+	if err != nil {
+		return nil, meta, err
+	}
+	defer res.Body.Close()
+	raw, err := io.ReadAll(io.LimitReader(res.Body, 16<<20+1))
+	if err != nil {
+		return nil, meta, err
+	}
+	meta.SHA = res.Header.Get("X-SHA256")
+	if t, err := time.Parse(http.TimeFormat, res.Header.Get("Last-Modified")); err == nil {
+		meta.Updated = t
+	}
+	meta.Size = int64(len(raw))
+	return raw, meta, nil
+}
+
+// HeadSave returns server metadata without downloading bytes.
+// ok=false with nil error means the server has no save (HTTP 404).
+func (c *Client) HeadSave(serial string, slot int) (meta SaveMeta, ok bool, err error) {
+	req, err := http.NewRequest("HEAD",
+		c.base+"/v1/saves/"+url.PathEscape(serial)+"/"+strconv.Itoa(slot), nil)
+	if err != nil {
+		return meta, false, err
+	}
+	if c.token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
+	res, err := c.http.Do(req)
+	if err != nil {
+		return meta, false, err
+	}
+	defer res.Body.Close()
+	if res.StatusCode == http.StatusNotFound {
+		return meta, false, nil
+	}
+	if res.StatusCode != http.StatusOK {
+		return meta, false, fmt.Errorf("HEAD save: %s", res.Status)
+	}
+	meta.SHA = res.Header.Get("X-SHA256")
+	if t, err := time.Parse(http.TimeFormat, res.Header.Get("Last-Modified")); err == nil {
+		meta.Updated = t
+	}
+	return meta, true, nil
+}
+
+// PutSave uploads a memory card, returning the stored metadata.
+func (c *Client) PutSave(serial string, slot int, data []byte) (SaveMeta, error) {
+	var meta SaveMeta
+	req, err := http.NewRequest("PUT",
+		c.base+"/v1/saves/"+url.PathEscape(serial)+"/"+strconv.Itoa(slot),
+		bytes.NewReader(data))
+	if err != nil {
+		return meta, err
+	}
+	req.Header.Set("Content-Type", "application/octet-stream")
+	if c.token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
+	res, err := c.http.Do(req)
+	if err != nil {
+		return meta, err
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		return meta, fmt.Errorf("PUT save: %s", res.Status)
+	}
+	var out struct {
+		SHA256    string `json:"sha256"`
+		Size      int64  `json:"size"`
+		UpdatedAt string `json:"updated_at"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&out); err != nil {
+		return meta, err
+	}
+	meta.SHA = out.SHA256
+	meta.Size = out.Size
+	if t, err := time.Parse(time.RFC3339, out.UpdatedAt); err == nil {
+		meta.Updated = t
+	}
+	return meta, nil
 }

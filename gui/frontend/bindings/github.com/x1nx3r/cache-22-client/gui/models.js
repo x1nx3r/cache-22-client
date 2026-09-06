@@ -103,6 +103,27 @@ export class EmuStatus {
              */
             this["stageTotal"] = 0;
         }
+        if (!("saveSeq" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["saveSeq"] = 0;
+        }
+        if (!("saveMsg" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["saveMsg"] = "";
+        }
+        if (!("saveOk" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["saveOk"] = false;
+        }
 
         Object.assign(this, $$source);
     }
