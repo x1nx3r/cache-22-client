@@ -344,7 +344,6 @@ export default function App() {
     const [playerStatus, setPlayerStatus] = useState(null);
     const [covers, setCovers] = useState({});
     const [srvMsg, setSrvMsg] = useState("");
-    const [snackMsg, setSnackMsg] = useState("");
     const [emu, setEmu] = useState({running: false});
     const [tier, setTier] = useState(null);
     const [dataDir, setDataDir] = useState("");
@@ -355,15 +354,22 @@ export default function App() {
     const [padSource, setPadSource] = useState("keyboard");
     const [joyDevices, setJoyDevices] = useState([]);
     const [joyIndex, setJoyIndex] = useState(0);
+    const [toasts, setToasts] = useState([]);
     const dialogRef = useRef(null);
-    const snackTimer = useRef(null);
     const serversRef = useRef([]);
     serversRef.current = servers;
 
-    const toast = useCallback((msg) => {
-        setSnackMsg(String(msg).slice(0, 200));
-        clearTimeout(snackTimer.current);
-        snackTimer.current = setTimeout(() => setSnackMsg(""), 5000);
+    const toast = useCallback((msg, kind) => {
+        kind = kind || "info";
+        const id = Date.now() + Math.random();
+        setToasts((prev) => [...prev.slice(-2), {id, kind, text: String(msg).slice(0, 220)}]);
+        setTimeout(() => {
+            setToasts((prev) => prev.filter((t) => t.id !== id));
+        }, kind === "error" ? 9000 : 5000);
+    }, []);
+
+    const dismissToast = useCallback((id) => {
+        setToasts((prev) => prev.filter((t) => t.id !== id));
     }, []);
 
     const activeServer = useCallback(() => {
@@ -521,7 +527,7 @@ export default function App() {
 
     const doPlay = async (game) => {
         if (emu && emu.running) {
-            toast("Already playing " + (emu.title || emu.serial) + " — stop it first.");
+            toast("Already playing " + (emu.title || emu.serial) + " — stop it first.", "error");
             return;
         }
         setPlayer({serial: game.serial, title: game.title});
@@ -532,7 +538,7 @@ export default function App() {
             if (String(e).includes("BIOS")) {
                 dialogRef.current && dialogRef.current.show();
             } else {
-                toast(e);
+                toast(e, "error");
             }
         }
     };
@@ -541,7 +547,7 @@ export default function App() {
         try {
             await EmulatorService.StopEmulator();
             setEmu(await EmulatorService.EmuStatus());
-        } catch (e) { toast(e); }
+        } catch (e) { toast(e, "error"); }
     };
 
     const probeNow = async () => {
@@ -558,7 +564,7 @@ export default function App() {
         try {
             await LibraryService.Clean(serial);
             loadLibrary();
-        } catch (e) { toast(e); }
+        } catch (e) { toast(e, "error"); }
     };
 
     const cleanAll = async () => {
@@ -566,7 +572,7 @@ export default function App() {
         try {
             await LibraryService.Clean("all");
             loadLibrary();
-        } catch (e) { toast(e); }
+        } catch (e) { toast(e, "error"); }
     };
 
     const fmtTime = (unix) => {
@@ -580,10 +586,10 @@ export default function App() {
             const n = await EmulatorService.ImportBIOS();
             if (n > 0) {
                 dialogRef.current && dialogRef.current.close();
-                toast("Installed " + n + " BIOS file(s).");
+                toast("Installed " + n + " BIOS file(s).", "success");
                 biosStatus();
             }
-        } catch (e) { toast(e); }
+        } catch (e) { toast(e, "error"); }
     };
 
     return (
@@ -702,21 +708,33 @@ export default function App() {
             <footer className="player">
                 {emu.running ? (
                     <img className="player-art" alt="" src={covers[emu.serial] ? covers[emu.serial] : ""}/>
-                ) : playerStatus || player ? (
+                ) : playerStatus || player || emu.stage ? (
                     <img className="player-art" alt="" src={player && covers[player.serial] ? covers[player.serial] : ""}/>
                 ) : <div className="player-art"/>}
                 <div className="player-meta">
                     <div className="player-title">
-                        {emu.running ? (emu.title || emu.serial || "Playing") : player ? player.title : "Nothing playing"}
+                        {emu.running
+                            ? (emu.title || emu.serial || "Playing")
+                            : emu.stage && !player
+                                ? "Preparing…"
+                                : player ? player.title : "Nothing playing"}
                     </div>
                     {emu.running ? (
                         <div className="player-sub">running since {fmtTime(emu.sinceUnix)}</div>
+                    ) : emu.stage ? (
+                        <LinearProgress value={emu.stageTotal > 0 ? emu.stageDone / emu.stageTotal : 0}/>
                     ) : (
                         <LinearProgress value={playerStatus && playerStatus.total > 0 ? playerStatus.done / playerStatus.total : 0}/>
                     )}
                     {!emu.running && (
-                        <div className="player-sub">
-                            {playerStatus ? fmtBytes(playerStatus.done) + " / " + fmtBytes(playerStatus.total) + (playerStatus.running ? " · downloading…" : "") : ""}
+                        <div className={"player-sub" + (emu.stage && emu.stage.startsWith("Failed") ? " failed" : "")}>
+                            {emu.stage
+                                ? emu.stage + (emu.stageTotal > 0
+                                    ? " — " + fmtBytes(emu.stageDone) + " / " + fmtBytes(emu.stageTotal)
+                                    : "")
+                                : playerStatus
+                                    ? fmtBytes(playerStatus.done) + " / " + fmtBytes(playerStatus.total) + (playerStatus.running ? " · downloading…" : "")
+                                    : ""}
                         </div>
                     )}
                 </div>
@@ -744,7 +762,16 @@ export default function App() {
                 </span>
             </Dialog>
 
-            <div className={snackMsg ? "snack" : "snack hidden"}>{snackMsg}</div>
+            <div className="toasts">
+                {toasts.map((t) => (
+                    <div key={t.id} className={"toast " + t.kind} onClick={() => dismissToast(t.id)}>
+                        <span className="material-symbols-outlined">
+                            {t.kind === "error" ? "error" : t.kind === "success" ? "check_circle" : "info"}
+                        </span>
+                        <span>{t.text}</span>
+                    </div>
+                ))}
+            </div>
         </div>
     );
 }

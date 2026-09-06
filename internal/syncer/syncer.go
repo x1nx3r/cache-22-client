@@ -10,6 +10,10 @@ import (
 )
 
 func FillRanges(client *api.Client, serial string, s *store.Sparse, ranges [][2]int64, workers int) error {
+	return FillRangesProgress(client, serial, s, ranges, workers, nil)
+}
+
+func FillRangesProgress(client *api.Client, serial string, s *store.Sparse, ranges [][2]int64, workers int, progress func(done, total int)) error {
 	if workers < 1 {
 		workers = 1
 	}
@@ -21,6 +25,14 @@ func FillRanges(client *api.Client, serial string, s *store.Sparse, ranges [][2]
 
 	var mu sync.Mutex
 	var firstErr error
+	var done int
+	total := len(ranges)
+	report := func() {
+		if progress != nil {
+			progress(done, total)
+		}
+	}
+	report()
 	var wg sync.WaitGroup
 	for w := 0; w < workers; w++ {
 		wg.Add(1)
@@ -47,6 +59,8 @@ func FillRanges(client *api.Client, serial string, s *store.Sparse, ranges [][2]
 				if err != nil && firstErr == nil {
 					firstErr = fmt.Errorf("range %d-%d: %w", r[0], r[1], err)
 				}
+				done++
+				report()
 				mu.Unlock()
 				if err != nil {
 					return

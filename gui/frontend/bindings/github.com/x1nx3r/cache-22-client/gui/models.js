@@ -82,6 +82,27 @@ export class EmuStatus {
              */
             this["sinceUnix"] = 0;
         }
+        if (!("stage" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["stage"] = "";
+        }
+        if (!("stageDone" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["stageDone"] = 0;
+        }
+        if (!("stageTotal" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["stageTotal"] = 0;
+        }
 
         Object.assign(this, $$source);
     }
