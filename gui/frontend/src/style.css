@@ -191,6 +191,43 @@ main { grid-area: main; padding: 24px 32px; overflow-y: auto; }
 
 .pad-clear:hover { color: var(--ctp-red); }
 
+.saves-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+
+@media (max-width: 1100px) {
+    .saves-grid { grid-template-columns: 1fr; }
+}
+
+.save-game { background: var(--md-sys-color-surface-container-high); border-radius: 12px; padding: 14px 16px; }
+
+.save-game-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+
+.save-game-head .grow { flex: 1; }
+
+.save-pill {
+    font-size: 12px;
+    font-weight: 500;
+    padding: 3px 10px;
+    border-radius: 999px;
+    border: 1px solid transparent;
+    white-space: nowrap;
+}
+
+.save-pill.synced { color: var(--ctp-green); border-color: rgba(166,218,149,0.45); background: rgba(166,218,149,0.10); }
+
+.save-pill.local { color: var(--ctp-yellow); border-color: rgba(238,212,159,0.45); background: rgba(238,212,159,0.10); }
+
+.save-pill.empty { color: var(--ctp-overlay0); border-color: rgba(110,115,141,0.5); }
+
+.bak-row { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--ctp-subtext0); padding: 3px 8px 3px 42px; }
+
+.bak-row .material-symbols-outlined { font-size: 15px; }
+
+.bak-row .grow { flex: 1; }
+
+.bak-restore { color: var(--ctp-mauve); cursor: pointer; font-weight: 500; }
+
+.bak-restore:hover { text-decoration: underline; }
+
 .bind-pill {
     display: inline-flex;
     align-items: center;

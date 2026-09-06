@@ -232,3 +232,27 @@ func (c *Client) PutSave(serial string, slot int, data []byte) (SaveMeta, error)
 	}
 	return meta, nil
 }
+
+// DeleteSave removes a cloud save. Missing saves are not an error.
+func (c *Client) DeleteSave(serial string, slot int) error {
+	req, err := http.NewRequest("DELETE",
+		c.base+"/v1/saves/"+url.PathEscape(serial)+"/"+strconv.Itoa(slot), nil)
+	if err != nil {
+		return err
+	}
+	if c.token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
+	res, err := c.http.Do(req)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+	if res.StatusCode == http.StatusNotFound {
+		return nil
+	}
+	if res.StatusCode != http.StatusOK {
+		return fmt.Errorf("DELETE save: %s", res.Status)
+	}
+	return nil
+}

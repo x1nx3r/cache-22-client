@@ -156,7 +156,7 @@ const DEFAULT_PAD_MAP = {
     RUp: "Keyboard/T", RRight: "Keyboard/H", RDown: "Keyboard/G", RLeft: "Keyboard/F",
 };
 
-function SettingsView({tab, setTab, games, dataDir, emuVersion, biosDir, biosOk, tier, link, padButtons, padMap, emuRunning, servers, setView, padSource, onPadSource, joyDevices, joyIndex, onJoyIndex, onProbe, onClean, onCleanAll, onImportBIOS, onBind, onCaptureJoy, notify}) {
+function SettingsView({tab, setTab, games, saves, refreshSaves, dataDir, emuVersion, biosDir, biosOk, tier, link, padButtons, padMap, emuRunning, servers, setView, padSource, onPadSource, joyDevices, joyIndex, onJoyIndex, onProbe, onClean, onCleanAll, onImportBIOS, onBind, onCaptureJoy, onSyncSaves, onRestoreSave, onDeleteSave, notify}) {
     const [capturing, setCapturing] = useState(null);
     const [joyBusy, setJoyBusy] = useState(null);
     const boundCount = padButtons.filter((b) => padMap && padMap[b]).length;
@@ -253,6 +253,55 @@ function SettingsView({tab, setTab, games, dataDir, emuVersion, biosDir, biosOk,
                         </ElevatedCard>
                     </div>
                 )}
+                {tab === "saves" && (
+                    <div>
+                        <h1 className="headline">Saves</h1>
+                        <p className="msg">Per-game memory cards, both slots. Sync pulls newer cloud copies; restore brings back a local backup; delete removes local and cloud copies.</p>
+                        <div className="saves-grid">
+                            {saves.map((g) => (
+                                <div className="save-game" key={g.serial}>
+                                    <div className="save-game-head">
+                                        <div className="grow">
+                                            <div className="srv-name">{titleFor(g.serial)}</div>
+                                            <div className="srv-url">{g.serial}</div>
+                                        </div>
+                                        <OutlinedButton onClick={() => onSyncSaves(g.serial)}>Sync</OutlinedButton>
+                                    </div>
+                                    {g.slots.map((s) => (
+                                        <div key={s.slot}>
+                                            <div className="pad-row" style={{cursor: "default"}}>
+                                                <span className="pad-glyph-badge">S{s.slot}</span>
+                                                <span className="pad-row-name">
+                                                    {s.present ? fmtBytes(s.size) + " · " + fmtDate(s.mtime) : "empty"}
+                                                </span>
+                                                <span className="grow"/>
+                                                {!s.present
+                                                    ? <span className="save-pill empty">Empty</span>
+                                                    : s.synced
+                                                        ? <span className="save-pill synced">Synced</span>
+                                                        : <span className="save-pill local">Local changes</span>}
+                                                {s.present && (
+                                                    <span className="pad-clear" title="Delete save" onClick={() => onDeleteSave(g.serial, s.slot)}>
+                                                        <span className="material-symbols-outlined">delete</span>
+                                                    </span>
+                                                )}
+                                            </div>
+                                            {s.backups.map((b) => (
+                                                <div className="bak-row" key={b.name}>
+                                                    <span className="material-symbols-outlined">history</span>
+                                                    <span>{fmtDate(b.mtime)} · {fmtBytes(b.size)}</span>
+                                                    <span className="grow"/>
+                                                    <span className="bak-restore" onClick={() => onRestoreSave(g.serial, s.slot, b.name)}>Restore</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ))}
+                                </div>
+                            ))}
+                        </div>
+                        {saves.length === 0 && <p className="empty">No saves yet — play a game first.</p>}
+                    </div>
+                )}
                 {tab === "controller" && (
                     <div>
                         <h1 className="headline">Controller</h1>
@@ -326,6 +375,7 @@ function SettingsView({tab, setTab, games, dataDir, emuVersion, biosDir, biosOk,
                 <SettingsCard icon="memory" title="BIOS" sub={biosOk === null ? "unknown" : biosOk ? "installed" : "missing"} onClick={() => setTab("emulator")}/>
                 <SettingsCard icon="network_check" title="Network" sub={link || "no probe yet"} onClick={() => setTab("network")}/>
                 <SettingsCard icon="gamepad" title="Controller" sub={padButtons.length + " bindings"} onClick={() => setTab("controller")}/>
+                <SettingsCard icon="save" title="Saves" sub={saves.length + " game" + (saves.length !== 1 ? "s" : "")} onClick={() => { refreshSaves(); setTab("saves"); }}/>
             </div>
         </div>
     );
@@ -354,6 +404,7 @@ export default function App() {
     const [padSource, setPadSource] = useState("keyboard");
     const [joyDevices, setJoyDevices] = useState([]);
     const [joyIndex, setJoyIndex] = useState(0);
+    const [saves, setSaves] = useState([]);
     const [toasts, setToasts] = useState([]);
     const dialogRef = useRef(null);
     const serversRef = useRef([]);
@@ -468,6 +519,40 @@ export default function App() {
         } catch (e) { toast(e); }
     };
 
+    const refreshSaves = useCallback(async () => {
+        try {
+            setSaves(await EmulatorService.ListSaves() || []);
+        } catch (e) { /* ignore */ }
+    }, []);
+
+    const titleFor = useCallback((serial) => {
+        const g = games.find((x) => x.serial === serial);
+        return g ? g.title : serial;
+    }, [games]);
+
+    const syncSave = async (serial) => {
+        try {
+            await EmulatorService.SyncSaves(serial);
+            refreshSaves();
+        } catch (e) { toast(e, "error"); }
+    };
+
+    const restoreSave = async (serial, slot, name) => {
+        if (!window.confirm("Restore this backup over the current card?")) return;
+        try {
+            await EmulatorService.RestoreSave(serial, slot, name);
+            refreshSaves();
+        } catch (e) { toast(e, "error"); }
+    };
+
+    const deleteSave = async (serial, slot) => {
+        if (!window.confirm("Delete this save locally and in the cloud?")) return;
+        try {
+            await EmulatorService.DeleteSave(serial, slot);
+            refreshSaves();
+        } catch (e) { toast(e, "error"); }
+    };
+
     const biosStatus = useCallback(async () => {
         try {
             setBiosOk(await EmulatorService.BiosOK());
@@ -494,6 +579,7 @@ export default function App() {
             try { setEmu(await EmulatorService.EmuStatus()); } catch (e) { /* ignore */ }
             refreshPad();
             refreshJoy();
+            refreshSaves();
         })();
     }, [refreshServers, biosStatus, refreshLink]);
 
@@ -586,6 +672,13 @@ export default function App() {
     const fmtTime = (unix) => {
         try {
             return new Date(unix * 1000).toLocaleTimeString([], {hour: "2-digit", minute: "2-digit", second: "2-digit"});
+        } catch (e) { return ""; }
+    };
+
+    const fmtDate = (unix) => {
+        try {
+            return new Date(unix * 1000).toLocaleDateString([], {month: "short", day: "numeric"}) + " " +
+                new Date(unix * 1000).toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"});
         } catch (e) { return ""; }
     };
 
@@ -692,6 +785,8 @@ export default function App() {
                         biosOk={biosOk}
                         tier={tier}
                         link={link}
+                        saves={saves}
+                        refreshSaves={refreshSaves}
                         padButtons={padButtons}
                         padMap={padMap}
                         emuRunning={emu.running}
@@ -708,6 +803,9 @@ export default function App() {
                         onImportBIOS={importBIOS}
                         onBind={bindPad}
                         onCaptureJoy={captureJoy}
+                        onSyncSaves={syncSave}
+                        onRestoreSave={restoreSave}
+                        onDeleteSave={deleteSave}
                         notify={toast}
                     />
                 )}

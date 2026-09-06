@@ -18,5 +18,8 @@ export {
     EmuStatus,
     FetchTier,
     GameInfo,
+    GameSaveInfo,
+    SaveBackupInfo,
+    SaveSlotInfo,
     ServerEntry
 } from "./models.js";

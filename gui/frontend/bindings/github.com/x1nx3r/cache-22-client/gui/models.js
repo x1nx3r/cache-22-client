@@ -258,6 +258,154 @@ export class GameInfo {
     }
 }
 
+export class GameSaveInfo {
+    /**
+     * Creates a new GameSaveInfo instance.
+     * @param {Partial<GameSaveInfo>} [$$source = {}] - The source object to create the GameSaveInfo.
+     */
+    constructor($$source = {}) {
+        if (!("serial" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["serial"] = "";
+        }
+        if (!("slots" in $$source)) {
+            /**
+             * @member
+             * @type {SaveSlotInfo[]}
+             */
+            this["slots"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new GameSaveInfo instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {GameSaveInfo}
+     */
+    static createFrom($$source = {}) {
+        const $$createField1_0 = $$createType1;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("slots" in $$parsedSource) {
+            $$parsedSource["slots"] = $$createField1_0($$parsedSource["slots"]);
+        }
+        return new GameSaveInfo(/** @type {Partial<GameSaveInfo>} */($$parsedSource));
+    }
+}
+
+export class SaveBackupInfo {
+    /**
+     * Creates a new SaveBackupInfo instance.
+     * @param {Partial<SaveBackupInfo>} [$$source = {}] - The source object to create the SaveBackupInfo.
+     */
+    constructor($$source = {}) {
+        if (!("name" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["name"] = "";
+        }
+        if (!("mtime" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["mtime"] = 0;
+        }
+        if (!("size" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["size"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new SaveBackupInfo instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {SaveBackupInfo}
+     */
+    static createFrom($$source = {}) {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new SaveBackupInfo(/** @type {Partial<SaveBackupInfo>} */($$parsedSource));
+    }
+}
+
+export class SaveSlotInfo {
+    /**
+     * Creates a new SaveSlotInfo instance.
+     * @param {Partial<SaveSlotInfo>} [$$source = {}] - The source object to create the SaveSlotInfo.
+     */
+    constructor($$source = {}) {
+        if (!("slot" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["slot"] = 0;
+        }
+        if (!("present" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["present"] = false;
+        }
+        if (!("size" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["size"] = 0;
+        }
+        if (!("mtime" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["mtime"] = 0;
+        }
+        if (!("synced" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["synced"] = false;
+        }
+        if (!("backups" in $$source)) {
+            /**
+             * @member
+             * @type {SaveBackupInfo[]}
+             */
+            this["backups"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new SaveSlotInfo instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {SaveSlotInfo}
+     */
+    static createFrom($$source = {}) {
+        const $$createField5_0 = $$createType3;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("backups" in $$parsedSource) {
+            $$parsedSource["backups"] = $$createField5_0($$parsedSource["backups"]);
+        }
+        return new SaveSlotInfo(/** @type {Partial<SaveSlotInfo>} */($$parsedSource));
+    }
+}
+
 export class ServerEntry {
     /**
      * Creates a new ServerEntry instance.
@@ -306,3 +454,9 @@ export class ServerEntry {
         return new ServerEntry(/** @type {Partial<ServerEntry>} */($$parsedSource));
     }
 }
+
+// Private type creation functions
+const $$createType0 = SaveSlotInfo.createFrom;
+const $$createType1 = $Create.Array($$createType0);
+const $$createType2 = SaveBackupInfo.createFrom;
+const $$createType3 = $Create.Array($$createType2);

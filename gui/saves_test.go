@@ -145,3 +145,80 @@ func TestPushUploadsChanges(t *testing.T) {
 		t.Errorf("push must note success: seq=%d ok=%v msg=%q", e.saveSeq, e.saveOk, e.saveMsg)
 	}
 }
+
+func TestListSaves(t *testing.T) {
+	dir := t.TempDir()
+	e := testEmuService(dir)
+	got, err := e.ListSaves()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 0 {
+		t.Errorf("empty library = %+v", got)
+	}
+	lib := save.LocalCard(dir, "G", 1)
+	if err := os.MkdirAll(filepath.Dir(lib), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(lib, []byte("card"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := save.CopyFile(lib+".local.1.bak", lib); err != nil {
+		t.Fatal(err)
+	}
+	got, err = e.ListSaves()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Serial != "G" {
+		t.Fatalf("list = %+v", got)
+	}
+	s1 := got[0].Slots[0]
+	if !s1.Present || s1.Size != 4 || s1.Synced || len(s1.Backups) != 1 {
+		t.Errorf("slot1 = %+v", s1)
+	}
+	if got[0].Slots[1].Present {
+		t.Error("slot2 must be absent")
+	}
+}
+
+func TestRestoreAndDeleteSave(t *testing.T) {
+	dir := t.TempDir()
+	e := testEmuService(dir)
+	lib := save.LocalCard(dir, "G", 1)
+	if err := os.MkdirAll(filepath.Dir(lib), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(lib, []byte("current"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := save.CopyFile(lib+".local.9.bak", lib); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(lib, []byte("changed"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.RestoreSave("G", 1, "slot1.ps2.local.9.bak"); err != nil {
+		t.Fatalf("restore: %v", err)
+	}
+	raw, _ := os.ReadFile(lib)
+	if string(raw) != "current" {
+		t.Errorf("restored = %q", raw)
+	}
+	if err := e.RestoreSave("G", 1, "../../evil.bak"); err == nil {
+		t.Error("path traversal must fail")
+	}
+	if err := e.DeleteSave("G", 1); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	if _, err := os.Stat(lib); !os.IsNotExist(err) {
+		t.Error("library card must be gone")
+	}
+	got, err := e.ListSaves()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 0 {
+		t.Errorf("after delete list = %+v", got)
+	}
+}

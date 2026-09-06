@@ -47,6 +47,16 @@ export function DataDir() {
 }
 
 /**
+ * DeleteSave removes local cards, backups and sync state, plus the cloud copy.
+ * @param {string} serial
+ * @param {number} slot
+ * @returns {$CancellablePromise<void>}
+ */
+export function DeleteSave(serial, slot) {
+    return $Call.ByID(1179805720, serial, slot);
+}
+
+/**
  * @returns {$CancellablePromise<$models.EmuStatus>}
  */
 export function EmuStatus() {
@@ -97,11 +107,21 @@ export function LastProbe() {
 }
 
 /**
+ * ListSaves scans the local cards library, newest serials first.
+ * @returns {$CancellablePromise<$models.GameSaveInfo[]>}
+ */
+export function ListSaves() {
+    return $Call.ByID(3924214832).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType7($result);
+    }));
+}
+
+/**
  * @returns {$CancellablePromise<{ [_ in string]?: string }>}
  */
 export function PadBindings() {
     return $Call.ByID(316686757).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType6($result);
+        return $$createType8($result);
     }));
 }
 
@@ -110,7 +130,7 @@ export function PadBindings() {
  */
 export function PadButtons() {
     return $Call.ByID(3573199952).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType7($result);
+        return $$createType9($result);
     }));
 }
 
@@ -129,6 +149,18 @@ export function ProbeNow() {
     return $Call.ByID(1730317900).then(/** @type {($result: any) => any} */(($result) => {
         return $$createType4($result);
     }));
+}
+
+/**
+ * RestoreSave copies a local backup over the library and working cards and
+ * clears sync state so the restored copy wins the next compare.
+ * @param {string} serial
+ * @param {number} slot
+ * @param {string} name
+ * @returns {$CancellablePromise<void>}
+ */
+export function RestoreSave(serial, slot, name) {
+    return $Call.ByID(1766289261, serial, slot, name);
 }
 
 /**
@@ -156,6 +188,15 @@ export function StopEmulator() {
 }
 
 /**
+ * SyncSaves pulls newer cloud saves for one game (emulator must be stopped).
+ * @param {string} serial
+ * @returns {$CancellablePromise<void>}
+ */
+export function SyncSaves(serial) {
+    return $Call.ByID(3743341221, serial);
+}
+
+/**
  * @returns {$CancellablePromise<string>}
  */
 export function Version() {
@@ -169,5 +210,7 @@ const $$createType2 = joy$0.Device.createFrom;
 const $$createType3 = $Create.Array($$createType2);
 const $$createType4 = api$0.ProbeResult.createFrom;
 const $$createType5 = $Create.Nullable($$createType4);
-const $$createType6 = $Create.Map($Create.Any, $Create.Any);
-const $$createType7 = $Create.Array($Create.Any);
+const $$createType6 = $models.GameSaveInfo.createFrom;
+const $$createType7 = $Create.Array($$createType6);
+const $$createType8 = $Create.Map($Create.Any, $Create.Any);
+const $$createType9 = $Create.Array($Create.Any);
