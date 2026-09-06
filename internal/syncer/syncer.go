@@ -76,10 +76,11 @@ func WholeImage(size int64, segment int64) [][2]int64 {
 func PreloadRanges(size int64, boot [][2]int64, class string) [][2]int64 {
 	head := int64(0)
 	switch class {
-	case "mid":
+	case "mid", "slow":
+		// Cap the head well below the old size/4 rule: FUSE serves the
+		// rest on demand, and a gigabyte of synchronous preload reads
+		// like a hang with no progress UI.
 		head = 256 << 20
-	case "slow":
-		head = size / 4
 	}
 	if head > size {
 		head = size

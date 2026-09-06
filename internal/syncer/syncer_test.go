@@ -114,7 +114,7 @@ func TestPreloadRanges(t *testing.T) {
 	if got := PreloadRanges(4<<30, boot, "mid"); len(got) != 2 || got[1] != [2]int64{0, 256 << 20} {
 		t.Errorf("mid = %v", got)
 	}
-	if got := PreloadRanges(4<<30, boot, "slow"); len(got) != 2 || got[1] != [2]int64{0, 1 << 30} {
+	if got := PreloadRanges(4<<30, boot, "slow"); len(got) != 2 || got[1] != [2]int64{0, 256 << 20} {
 		t.Errorf("slow = %v", got)
 	}
 	if got := PreloadRanges(100, boot, "mid"); len(got) != 1 || got[0] != [2]int64{0, 100} {
