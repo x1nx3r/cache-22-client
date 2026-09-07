@@ -73,7 +73,7 @@ jobs:
           path: |
             gui/bin/*.deb
             gui/bin/*.rpm
-            gui/bin/*.pacman
+            gui/bin/*.pkg.tar.zst
             gui/bin/*.AppImage
 
   release:
