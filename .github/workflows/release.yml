@@ -1,0 +1,90 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  cli:
+    name: CLI ${{ matrix.goos }}/${{ matrix.goarch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { goos: linux, goarch: amd64, runner: ubuntu-latest }
+          - { goos: linux, goarch: arm64, runner: ubuntu-latest }
+          - { goos: darwin, goarch: amd64, runner: macos-latest }
+          - { goos: darwin, goarch: arm64, runner: macos-latest }
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+      - name: Build CLI
+        shell: bash
+        run: |
+          out="dist/cache22-${{ matrix.goos }}-${{ matrix.goarch }}"
+          if [ "${{ matrix.goos }}" = "windows" ]; then out="$out.exe"; fi
+          CGO_ENABLED=0 GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} \
+            go build -trimpath -ldflags="-w -s" -o "$out" ./cmd/cache22
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cli-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/
+
+  gui-linux:
+    name: GUI Linux packages
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install webkit toolchain + packaging deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-4-dev libwebkitgtk-6.0-dev pkg-config
+      - name: Install wails3 + nfpm
+        run: |
+          go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-beta.16
+          go install github.com/goreleaser/nfpm/v2/cmd/nfpm@latest
+      - name: Package (deb, rpm, archlinux)
+        working-directory: gui
+        run: wails3 task package
+      - name: AppImage (best effort)
+        working-directory: gui
+        continue-on-error: true
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: '1'
+        run: wails3 task linux:create:appimage
+      - name: Verify both binaries are in the deb
+        run: dpkg -c gui/bin/cache22_*_amd64.deb | grep -E 'usr/bin/cache22(-cli)?$'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gui-linux
+          path: |
+            gui/bin/*.deb
+            gui/bin/*.rpm
+            gui/bin/*.pacman
+            gui/bin/*.AppImage
+
+  release:
+    needs: [cli, gui-linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+          path: release
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: release/*
+          generate_release_notes: true

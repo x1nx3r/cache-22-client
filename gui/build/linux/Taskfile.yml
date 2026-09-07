@@ -99,15 +99,32 @@ tasks:
       DOCKER_MOUNTS:
         sh: 'wails3 tool docker-mounts'
 
+  # CLI from the parent module: pure Go, no cgo, ships alongside the GUI.
+  # dir is relative to the invoking Taskfile dir (gui/), hence the parent.
+  build:cli:
+    summary: Builds the cache22 CLI from the parent module
+    dir: ..
+    cmds:
+      - CGO_ENABLED=0 go build -trimpath -ldflags="-w -s" -o gui/bin/cache22-cli ./cmd/cache22
+    sources:
+      - cmd/**/*.go
+      - internal/**/*.go
+      - go.mod
+      - go.sum
+    generates:
+      - gui/bin/cache22-cli
+
   package:
     summary: Packages the application for Linux
     deps:
       - task: build
+    # deb/rpm/aur first: they are the reliable artifacts. The AppImage goes
+    # last because linuxdeploy's gtk plugin is brittle on non-Debian paths.
     cmds:
-      - task: create:appimage
       - task: create:deb
       - task: create:rpm
       - task: create:aur
+      - task: create:appimage
 
   create:appimage:
     summary: Creates an AppImage
@@ -130,6 +147,7 @@ tasks:
     summary: Creates a deb package
     deps:
       - task: build
+      - task: build:cli
     cmds:
       - task: generate:dotdesktop
       - task: generate:deb
@@ -138,6 +156,7 @@ tasks:
     summary: Creates a rpm package
     deps:
       - task: build
+      - task: build:cli
     cmds:
       - task: generate:dotdesktop
       - task: generate:rpm
@@ -146,24 +165,28 @@ tasks:
     summary: Creates a arch linux packager package
     deps:
       - task: build
+      - task: build:cli
     cmds:
       - task: generate:dotdesktop
       - task: generate:aur
 
+  # Packaging goes through build/linux/nfpm/package.sh: real nfpm (which
+  # alone expands ${PACKAGE_VERSION}/${GOARCH}) plus bash-resolved version,
+  # so the shell Task picks cannot silently eat the expansions.
   generate:deb:
     summary: Creates a deb package
     cmds:
-      - wails3 tool package -name "{{.APP_NAME}}" -format deb -config ./build/linux/nfpm/nfpm.yaml -out {{.ROOT_DIR}}/bin
+      - bash build/linux/nfpm/package.sh deb
 
   generate:rpm:
     summary: Creates a rpm package
     cmds:
-      - wails3 tool package -name "{{.APP_NAME}}" -format rpm -config ./build/linux/nfpm/nfpm.yaml -out {{.ROOT_DIR}}/bin
+      - bash build/linux/nfpm/package.sh rpm
 
   generate:aur:
     summary: Creates a arch linux packager package
     cmds:
-      - wails3 tool package -name "{{.APP_NAME}}" -format archlinux -config ./build/linux/nfpm/nfpm.yaml -out {{.ROOT_DIR}}/bin
+      - bash build/linux/nfpm/package.sh archlinux
 
   generate:dotdesktop:
     summary: Generates a `.desktop` file
@@ -175,7 +198,7 @@ tasks:
       APP_NAME: '{{.APP_NAME}}'
       EXEC: '{{.APP_NAME}}'
       ICON: '{{.APP_NAME}}'
-      CATEGORIES: 'Development;'
+      CATEGORIES: 'Game;'
       OUTPUTFILE: '{{.ROOT_DIR}}/build/linux/{{.APP_NAME}}.desktop'
 
   run:

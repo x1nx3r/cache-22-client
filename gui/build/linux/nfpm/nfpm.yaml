@@ -1,35 +1,34 @@
-# Feel free to remove those if you don't want/need to use them.
-# Make sure to check the documentation at https://nfpm.goreleaser.com
-#
-# The lines below are called `modelines`. See `:help modeline`
-
+# nfpm config for the Cache-22 Linux packages (deb / rpm / archlinux).
+# Both binaries ship: the GUI app as cache22, the pure-Go CLI as cache22-cli.
+# PACKAGE_VERSION is provided by the linux Taskfile (git describe, v-stripped).
 name: "cache22"
 arch: ${GOARCH}
 platform: "linux"
-version: "0.1.0"
+version: ${PACKAGE_VERSION}
 section: "default"
 priority: "extra"
-maintainer: ${GIT_COMMITTER_NAME} <${GIT_COMMITTER_EMAIL}>
-description: "A cache22 application"
-vendor: "My Company"
-homepage: "https://wails.io"
-license: "MIT"
+maintainer: "x1nx3r <x1nx3r@users.noreply.github.com>"
+description: "PS2 library streamer - client GUI and CLI (sparse ISO store, cloud saves)"
+vendor: "x1nx3r"
+homepage: "https://github.com/x1nx3r/cache-22-client"
 release: "1"
 
 contents:
   - src: "./bin/cache22"
-    dst: "/usr/local/bin/cache22"
+    dst: "/usr/bin/cache22"
+  - src: "./bin/cache22-cli"
+    dst: "/usr/bin/cache22-cli"
   - src: "./build/appicon.png"
     dst: "/usr/share/icons/hicolor/128x128/apps/cache22.png"
   - src: "./build/linux/cache22.desktop"
     dst: "/usr/share/applications/cache22.desktop"
 
-# Default dependencies for the GTK4 + WebKitGTK 6.0 stack (Ubuntu 24.04+ / Debian 13+)
+# Default dependencies for the GTK4 + WebKitGTK 6.0 stack (Ubuntu 24.04+ / Debian 13+).
+# The CLI is pure Go and needs none of these; the GUI does.
 depends:
   - libgtk-4-1
   - libwebkitgtk-6.0-4
 
-# Distribution-specific overrides for different package formats
 overrides:
   # RPM packages for Fedora / RHEL / AlmaLinux / Rocky Linux
   rpm:
@@ -46,35 +45,3 @@ overrides:
 # scripts section to ensure desktop database is updated after install
 scripts:
   postinstall: "./build/linux/nfpm/scripts/postinstall.sh"
-  # You can also add preremove, postremove if needed
-  # preremove: "./build/linux/nfpm/scripts/preremove.sh"
-  # postremove: "./build/linux/nfpm/scripts/postremove.sh"
-
-# If you build your app with -tags gtk3 (legacy WebKit2GTK 4.1 stack — supported through v3.0.x, removed in v3.1),
-# replace the depends/overrides above with these:
-#
-# depends:
-#   - libgtk-3-0
-#   - libwebkit2gtk-4.1-0
-# overrides:
-#   rpm:
-#     depends:
-#       - gtk3
-#       - webkit2gtk4.1
-#   archlinux:
-#     depends:
-#       - gtk3
-#       - webkit2gtk-4.1
-#
-# replaces:
-#   - foobar
-# provides:
-#   - bar
-# recommends:
-#   - whatever
-# suggests:
-#   - something-else
-# conflicts:
-#   - not-foo
-#   - not-bar
-# changelog: "changelog.yaml"

@@ -33,6 +33,13 @@ export class DownloadStatus {
              */
             this["total"] = 0;
         }
+        if (!("lastError" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["lastError"] = "";
+        }
 
         Object.assign(this, $$source);
     }

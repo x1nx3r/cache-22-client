@@ -1,6 +1,7 @@
 # built binaries & sidecars
 /bin/
 **/bin/
+/dist/
 *.AppImage
 
 # frontend deps & build output (bindings/ IS tracked - regenerate with wails3 generate bindings)
