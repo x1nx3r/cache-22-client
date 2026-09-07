@@ -3,6 +3,8 @@
 **/bin/
 /dist/
 *.AppImage
+gui/build/linux/appimage/cache22
+gui/build/linux/appimage/cache22.png
 
 # frontend deps & build output (bindings/ IS tracked - regenerate with wails3 generate bindings)
 gui/frontend/node_modules/
