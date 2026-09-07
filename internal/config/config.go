@@ -24,7 +24,7 @@ func New() Config {
 		DataDir:      dataDir,
 		PCSX2Version: envOr("CACHE22_PCSX2_VERSION", "v2.9.30"),
 		Token:        os.Getenv("CACHE22_TOKEN"),
-		Profiling:    envOr("CACHE22_PROFILE", "1") == "1",
+		Profiling:    envOr("CACHE22_PROFILE", "0") == "1",
 	}
 }
 

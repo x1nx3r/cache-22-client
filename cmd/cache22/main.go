@@ -15,6 +15,7 @@ import (
 	"github.com/x1nx3r/cache-22-client/internal/fusefs"
 	"github.com/x1nx3r/cache-22-client/internal/pcsx2"
 	"github.com/x1nx3r/cache-22-client/internal/profile"
+	"github.com/x1nx3r/cache-22-client/internal/save"
 	"github.com/x1nx3r/cache-22-client/internal/store"
 	"github.com/x1nx3r/cache-22-client/internal/syncer"
 )
@@ -181,6 +182,7 @@ func cmdLaunch(client *api.Client, cfg config.Config, args []string) error {
 	if !pcsx2.HasBIOS(cfg.DataDir) {
 		fmt.Println("warning: no BIOS found, dump yours from a real PS2")
 	}
+	reportSaves(save.Prepare(client, cfg.DataDir, m.Serial))
 	app, err := pcsx2.Ensure(filepath.Join(cfg.DataDir, "emulator"), cfg.PCSX2Version)
 	if err != nil {
 		return err
@@ -189,7 +191,11 @@ func cmdLaunch(client *api.Client, cfg config.Config, args []string) error {
 		return err
 	}
 	fmt.Printf("launching %s on %s\n", m.Title, s.Path)
-	return pcsx2.Launch(app, cfg.DataDir, s.Path)
+	if err := pcsx2.Launch(app, cfg.DataDir, s.Path); err != nil {
+		return err
+	}
+	reportSaves(save.Push(client, cfg.DataDir, m.Serial))
+	return nil
 }
 
 func cmdPlay(client *api.Client, cfg config.Config, args []string) error {
@@ -211,6 +217,7 @@ func cmdPlay(client *api.Client, cfg config.Config, args []string) error {
 		return err
 	}
 	defer s.Close()
+	reportSaves(save.Prepare(client, cfg.DataDir, m.Serial))
 	link, err := client.Probe(m.Serial)
 	if err != nil {
 		fmt.Printf("probe failed (%v), assuming LAN\n", err)
@@ -248,7 +255,17 @@ func cmdPlay(client *api.Client, cfg config.Config, args []string) error {
 	if err := pcsx2.Prepare(cfg.DataDir); err != nil {
 		return err
 	}
-	return pcsx2.Launch(app, cfg.DataDir, iso)
+	if err := pcsx2.Launch(app, cfg.DataDir, iso); err != nil {
+		return err
+	}
+	reportSaves(save.Push(client, cfg.DataDir, m.Serial))
+	return nil
+}
+
+func reportSaves(rep save.Report) {
+	for _, n := range rep.Notes {
+		fmt.Printf("saves: %s\n", n.Msg)
+	}
 }
 
 func mntName(serial string) string {

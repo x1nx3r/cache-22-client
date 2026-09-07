@@ -410,6 +410,7 @@ export default function App() {
     const serversRef = useRef([]);
     serversRef.current = servers;
     const lastSaveSeq = useRef(0);
+    const lastDlErrs = useRef({});
 
     const toast = useCallback((msg, kind) => {
         kind = kind || "info";
@@ -603,6 +604,12 @@ export default function App() {
                 }
                 if (Object.keys(updates).length) {
                     setStatuses((prev) => ({...prev, ...updates}));
+                }
+                for (const [serial, s] of Object.entries(updates)) {
+                    if (s.lastError && lastDlErrs.current[serial] !== s.lastError) {
+                        lastDlErrs.current[serial] = s.lastError;
+                        toast(s.lastError, "error");
+                    }
                 }
                 if (player) {
                     try {

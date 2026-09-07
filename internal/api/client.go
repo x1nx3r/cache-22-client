@@ -3,8 +3,10 @@ package api
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -38,7 +40,17 @@ type Client struct {
 }
 
 func New(base, token string) *Client {
-	return &Client{base: base, http: &http.Client{}, token: token}
+	return &Client{base: base, token: token, http: &http.Client{
+		// Transport-level timeouts only: no overall Client.Timeout, so
+		// large range fetches on slow links can run as long as the
+		// connection keeps making progress.
+		Transport: &http.Transport{
+			DialContext:           (&net.Dialer{Timeout: 5 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
+			TLSHandshakeTimeout:   10 * time.Second,
+			ResponseHeaderTimeout: 20 * time.Second,
+			IdleConnTimeout:       90 * time.Second,
+		},
+	}}
 }
 
 func (c *Client) get(path string) (*http.Response, error) {
@@ -88,7 +100,24 @@ func GetManifest(c *Client, serial string) (Manifest, error) {
 	return m, nil
 }
 
-func (c *Client) DownloadRange(serial string, offset, length int64, w io.Writer) error {
+// DownloadRange fetches [offset, offset+length) into buf, retrying
+// transient failures (connection errors, 5xx/429, interrupted bodies).
+// buf is reset before each attempt; on final error its contents are
+// undefined.
+func (c *Client) DownloadRange(serial string, offset, length int64, buf *bytes.Buffer) error {
+	backoff := []time.Duration{200 * time.Millisecond, 800 * time.Millisecond}
+	var err error
+	for attempt := 0; ; attempt++ {
+		buf.Reset()
+		err = c.downloadRangeOnce(serial, offset, length, buf)
+		if err == nil || !retryable(err) || attempt >= len(backoff) {
+			return err
+		}
+		time.Sleep(backoff[attempt])
+	}
+}
+
+func (c *Client) downloadRangeOnce(serial string, offset, length int64, w io.Writer) error {
 	req, err := http.NewRequest("GET", c.base+"/v1/files/"+url.PathEscape(serial), nil)
 	if err != nil {
 		return err
@@ -103,10 +132,30 @@ func (c *Client) DownloadRange(serial string, offset, length int64, w io.Writer)
 	}
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusPartialContent {
-		return fmt.Errorf("range %d+%d: %s", offset, length, res.Status)
+		return &statusError{code: res.StatusCode, msg: fmt.Sprintf("range %d+%d: %s", offset, length, res.Status)}
 	}
-	_, err = io.Copy(w, res.Body)
-	return err
+	if _, err := io.Copy(w, res.Body); err != nil {
+		return fmt.Errorf("range %d+%d: %w", offset, length, err)
+	}
+	return nil
+}
+
+type statusError struct {
+	code int
+	msg  string
+}
+
+func (e *statusError) Error() string { return e.msg }
+
+// retryable reports whether a failed range fetch is worth retrying:
+// transport errors and interrupted bodies, plus 5xx and 429 responses.
+// Definitive 4xx statuses are not.
+func retryable(err error) bool {
+	var se *statusError
+	if errors.As(err, &se) {
+		return se.code == http.StatusTooManyRequests || se.code >= 500
+	}
+	return true
 }
 
 func Health(base string) error {

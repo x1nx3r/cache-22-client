@@ -10,20 +10,23 @@ import (
 )
 
 type DownloadStatus struct {
-	Running bool  `json:"running"`
-	Done    int64 `json:"done"`
-	Total   int64 `json:"total"`
+	Running   bool   `json:"running"`
+	Done      int64  `json:"done"`
+	Total     int64  `json:"total"`
+	LastError string `json:"lastError"`
 }
 
 type DownloadService struct {
-	servers *ServerService
-	dataDir string
-	mu      sync.Mutex
-	running map[string]bool
+	servers  *ServerService
+	dataDir  string
+	mu       sync.Mutex
+	running  map[string]bool
+	lastErrs map[string]string
 }
 
 func NewDownloadService(servers *ServerService, dataDir string) *DownloadService {
-	return &DownloadService{servers: servers, dataDir: dataDir, running: map[string]bool{}}
+	return &DownloadService{servers: servers, dataDir: dataDir,
+		running: map[string]bool{}, lastErrs: map[string]string{}}
 }
 
 func (d *DownloadService) client() (*api.Client, error) {
@@ -49,6 +52,7 @@ func (d *DownloadService) start(serial string, bootOnly bool) error {
 		return nil
 	}
 	d.running[serial] = true
+	delete(d.lastErrs, serial)
 	d.mu.Unlock()
 
 	go func() {
@@ -57,7 +61,11 @@ func (d *DownloadService) start(serial string, bootOnly bool) error {
 			delete(d.running, serial)
 			d.mu.Unlock()
 		}()
-		_ = d.run(serial, bootOnly)
+		if err := d.run(serial, bootOnly); err != nil {
+			d.mu.Lock()
+			d.lastErrs[serial] = err.Error()
+			d.mu.Unlock()
+		}
 	}()
 	return nil
 }
@@ -114,6 +122,7 @@ func (d *DownloadService) Status(serial string) (DownloadStatus, error) {
 	defer s.Close()
 	d.mu.Lock()
 	running := d.running[serial]
+	lastErr := d.lastErrs[serial]
 	d.mu.Unlock()
-	return DownloadStatus{Running: running, Done: s.DoneBytes(), Total: m.SizeBytes}, nil
+	return DownloadStatus{Running: running, Done: s.DoneBytes(), Total: m.SizeBytes, LastError: lastErr}, nil
 }

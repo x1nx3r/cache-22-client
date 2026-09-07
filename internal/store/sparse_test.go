@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 )
 
@@ -123,5 +124,36 @@ func TestPathsSanitized(t *testing.T) {
 	iso, prog := Paths(t.TempDir(), "../evil")
 	if filepath.Base(iso) != ".._evil.iso" || filepath.Base(prog) != ".._evil.progress.json" {
 		t.Errorf("paths = %q %q", iso, prog)
+	}
+}
+
+func TestSparseConcurrent(t *testing.T) {
+	s, err := Open(t.TempDir(), "G", 32*DefaultBlockLen, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	var wg sync.WaitGroup
+	for b := int64(0); b < 16; b++ {
+		wg.Add(1)
+		go func(b int64) {
+			defer wg.Done()
+			off := b * DefaultBlockLen
+			if err := s.WriteRange(off, make([]byte, DefaultBlockLen)); err != nil {
+				t.Errorf("write %d: %v", b, err)
+			}
+		}(b)
+		wg.Add(1)
+		go func(b int64) {
+			defer wg.Done()
+			_ = s.MissingRanges(b*DefaultBlockLen, DefaultBlockLen)
+			_ = s.HasBlock(b)
+			_ = s.DoneBytes()
+		}(b)
+	}
+	wg.Wait()
+	if got := s.DoneBytes(); got != 16*DefaultBlockLen {
+		t.Errorf("DoneBytes = %d, want %d", got, 16*DefaultBlockLen)
 	}
 }

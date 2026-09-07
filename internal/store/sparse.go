@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 )
 
 const DefaultBlockLen = 128 << 10
@@ -17,6 +18,7 @@ type Sparse struct {
 	Size     int64
 	BlockLen int64
 	file     *os.File
+	mu       sync.RWMutex
 	blocks   map[int64]bool
 	progPath string
 }
@@ -111,6 +113,8 @@ func (s *Sparse) blockRange(off, length int64) (int64, int64) {
 }
 
 func (s *Sparse) HasBlock(i int64) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return s.blocks[i]
 }
 
@@ -118,7 +122,12 @@ func (s *Sparse) ReadAt(p []byte, off int64) (int, error) {
 	return s.file.ReadAt(p, off)
 }
 
+// WriteRange records a fetched range and marks its blocks present.
+// off must start at a block boundary so the marked blocks are fully
+// written; MissingRanges only produces such offsets.
 func (s *Sparse) WriteRange(off int64, data []byte) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if _, err := s.file.WriteAt(data, off); err != nil {
 		return err
 	}
@@ -129,7 +138,13 @@ func (s *Sparse) WriteRange(off int64, data []byte) error {
 	return s.saveProgress()
 }
 
+// MissingRanges returns the sub-ranges of [off, off+length) whose blocks
+// are not fetched yet. Ranges always start at a block boundary so that
+// fetching them makes the marked blocks fully present; the final range is
+// clamped at the end of the request and the caller rounds it up.
 func (s *Sparse) MissingRanges(off, length int64) [][2]int64 {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	lo, hi := s.blockRange(off, length)
 	var out [][2]int64
 	var cur [2]int64
@@ -144,9 +159,6 @@ func (s *Sparse) MissingRanges(off, length int64) [][2]int64 {
 		}
 		start := i * s.BlockLen
 		end := start + s.BlockLen
-		if i == lo && off > start {
-			start = off
-		}
 		if i == hi && off+length < end {
 			end = off + length
 		}
@@ -164,6 +176,8 @@ func (s *Sparse) MissingRanges(off, length int64) [][2]int64 {
 }
 
 func (s *Sparse) DoneBytes() int64 {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	var n int64
 	for i := range s.blocks {
 		start := i * s.BlockLen

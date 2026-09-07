@@ -286,7 +286,31 @@ func TestEnsureRoundsUpToFetchSize(t *testing.T) {
 	if _, err := r.ReadAt(make([]byte, 100), 5000); err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 1 || got[0] != [2]int64{5000, 1 << 20} {
-		t.Errorf("server saw %v, want one 1MB-rounded range", got)
+	if len(got) != 1 || got[0] != [2]int64{0, 1 << 20} {
+		t.Errorf("server saw %v, want one 1MB range from block start", got)
+	}
+}
+
+func TestReadMidBlockThenHead(t *testing.T) {
+	data := patternData(1 << 20)
+	var hits atomic.Int64
+	client := testSetup(t, data, &hits)
+	st := openStore(t, int64(len(data)))
+	r := NewReader(client, st, int64(len(data)), "G", LANConfig())
+
+	if _, err := r.ReadAt(make([]byte, 100), 5000); err != nil {
+		t.Fatal(err)
+	}
+	head := make([]byte, 5000)
+	if _, err := r.ReadAt(head, 0); err != nil {
+		t.Fatal(err)
+	}
+	for i := range head {
+		if head[i] != data[i] {
+			t.Fatalf("byte %d = %d, want %d (block head must be fetched, not sparse zeros)", i, head[i], data[i])
+		}
+	}
+	if hits.Load() != 1 {
+		t.Errorf("requests = %d, want 1 (fetch must start at block start, covering the head)", hits.Load())
 	}
 }

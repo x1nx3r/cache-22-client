@@ -33,6 +33,7 @@ type EmulatorService struct {
 	probe api.ProbeResult
 
 	proc      *exec.Cmd
+	activeMnt string
 	runSerial string
 	runTitle  string
 	runSince  time.Time
@@ -231,166 +232,26 @@ func (e *EmulatorService) LastProbe() (*api.ProbeResult, error) {
 	return &p, nil
 }
 
-// installCard copies the library card into the working slot file.
-func installCard(dataDir, serial string, slot int) error {
-	return save.CopyFile(save.WorkingCard(dataDir, slot), save.LocalCard(dataDir, serial, slot))
-}
-
 // prepareSaves syncs both slots for a game before launch. It never fails
 // hard: offline or undecided states fall back to local cards with a notice.
 func (e *EmulatorService) prepareSaves(c *api.Client, serial string) {
 	e.setStage("Syncing saves", 0, 0)
-	st := save.LoadState(e.dataDir)
-	dirty := false
-	offline := false
-	pulled := false
-	for _, slot := range []int{1, 2} {
-		lib := save.LocalCard(e.dataDir, serial, slot)
-		localHash, lerr := save.HashFile(lib)
-		last, synced := st.Get(serial, slot)
-		srvMeta, srvOk, herr := c.HeadSave(serial, slot)
-		if herr != nil {
-			offline = true
-			if lerr == nil {
-				_ = installCard(e.dataDir, serial, slot)
-			}
-			continue
-		}
-		if !srvOk {
-			if lerr == nil {
-				_ = installCard(e.dataDir, serial, slot)
-				st = st.Set(serial, slot, save.Synced{SHA: localHash})
-				dirty = true
-			} else if wh, werr := save.HashFile(save.WorkingCard(e.dataDir, slot)); werr == nil {
-				// Adopt the working card as this game's card (first boot).
-				_ = save.CopyFile(lib, save.WorkingCard(e.dataDir, slot))
-				st = st.Set(serial, slot, save.Synced{SHA: wh})
-				dirty = true
-			}
-			continue
-		}
-		if lerr != nil {
-			// No local card: take the server's.
-			if raw, _, gerr := c.GetSave(serial, slot); gerr == nil {
-				_ = os.MkdirAll(filepath.Dir(lib), 0o755)
-				_ = os.WriteFile(lib, raw, 0o644)
-				_ = installCard(e.dataDir, serial, slot)
-				st = st.Set(serial, slot, save.Synced{SHA: srvMeta.SHA})
-				dirty, pulled = true, true
-			} else {
-				offline = true
-			}
-			continue
-		}
-		if !synced {
-			if localHash == srvMeta.SHA {
-				st = st.Set(serial, slot, save.Synced{SHA: localHash})
-				dirty = true
-				_ = installCard(e.dataDir, serial, slot)
-			} else {
-				e.resolveSaveConflict(c, st, serial, slot, localHash, srvMeta, &dirty, &pulled)
-				st = save.LoadState(e.dataDir)
-			}
-			continue
-		}
-		if localHash == last.SHA {
-			if srvMeta.SHA != last.SHA {
-				if raw, _, gerr := c.GetSave(serial, slot); gerr == nil {
-					_ = os.WriteFile(lib, raw, 0o644)
-					_ = installCard(e.dataDir, serial, slot)
-					st = st.Set(serial, slot, save.Synced{SHA: srvMeta.SHA})
-					dirty, pulled = true, true
-				} else {
-					offline = true
-				}
-			} else {
-				_ = installCard(e.dataDir, serial, slot)
-			}
-			continue
-		}
-		if srvMeta.SHA == last.SHA {
-			_ = installCard(e.dataDir, serial, slot)
-			st = st.Set(serial, slot, save.Synced{SHA: localHash})
-			dirty = true
-			continue
-		}
-		e.resolveSaveConflict(c, st, serial, slot, localHash, srvMeta, &dirty, &pulled)
-		st = save.LoadState(e.dataDir)
-	}
-	if dirty {
-		_ = save.SaveState(e.dataDir, st)
-	}
-	switch {
-	case offline:
-		e.noteSave(false, "Saves offline, using local cards")
-	case pulled:
-		e.noteSave(true, "Downloaded cloud save")
-	}
-}
-
-// resolveSaveConflict settles a both-sides-changed slot by mtime, backing
-// up the loser locally. Caller reloads state afterwards.
-func (e *EmulatorService) resolveSaveConflict(c *api.Client, st save.State, serial string, slot int, localHash string, srvMeta api.SaveMeta, dirty, pulled *bool) {
-	lib := save.LocalCard(e.dataDir, serial, slot)
-	var localMT time.Time
-	if fi, err := os.Stat(lib); err == nil {
-		localMT = fi.ModTime()
-	}
-	if !srvMeta.Updated.IsZero() && srvMeta.Updated.After(localMT) {
-		_ = save.BackupLocal(e.dataDir, serial, slot)
-		if raw, _, gerr := c.GetSave(serial, slot); gerr == nil {
-			_ = os.WriteFile(lib, raw, 0o644)
-			_ = installCard(e.dataDir, serial, slot)
-			st = st.Set(serial, slot, save.Synced{SHA: srvMeta.SHA})
-			_ = save.SaveState(e.dataDir, st)
-			*dirty, *pulled = true, true
-			e.noteSave(true, "Save conflict: server copy won, local backup kept")
-			return
-		}
-	}
-	_ = installCard(e.dataDir, serial, slot)
-	st = st.Set(serial, slot, save.Synced{SHA: localHash})
-	_ = save.SaveState(e.dataDir, st)
-	*dirty = true
-	e.noteSave(true, "Save conflict: local copy won")
+	e.reportSave(save.Prepare(c, e.dataDir, serial))
 }
 
 // pushSaves uploads changed working cards after the emulator exits.
 func (e *EmulatorService) pushSaves(c *api.Client, serial string) {
-	st := save.LoadState(e.dataDir)
-	dirty := false
-	pushed := false
-	failed := false
-	for _, slot := range []int{1, 2} {
-		workHash, werr := save.HashFile(save.WorkingCard(e.dataDir, slot))
-		if werr != nil {
-			continue
-		}
-		if last, ok := st.Get(serial, slot); ok && last.SHA == workHash {
-			continue
-		}
-		raw, err := os.ReadFile(save.WorkingCard(e.dataDir, slot))
-		if err != nil {
-			continue
-		}
-		meta, err := c.PutSave(serial, slot, raw)
-		if err != nil {
-			failed = true
-			continue
-		}
-		_ = save.CopyFile(save.LocalCard(e.dataDir, serial, slot), save.WorkingCard(e.dataDir, slot))
-		st = st.Set(serial, slot, save.Synced{SHA: meta.SHA})
-		dirty, pushed = true, true
+	e.reportSave(save.Push(c, e.dataDir, serial))
+}
+
+// reportSave replays the last sync note through the toast queue, matching
+// the previous inline behavior where each notice overwrote the last.
+func (e *EmulatorService) reportSave(rep save.Report) {
+	if len(rep.Notes) == 0 {
+		return
 	}
-	if dirty {
-		_ = save.SaveState(e.dataDir, st)
-	}
-	switch {
-	case pushed:
-		e.noteSave(true, "Cloud saves synced")
-	case failed:
-		e.noteSave(false, "Save upload failed, kept locally")
-	}
+	n := rep.Notes[len(rep.Notes)-1]
+	e.noteSave(n.OK, n.Msg)
 }
 
 func (e *EmulatorService) Play(serial string) error {
@@ -479,6 +340,9 @@ func (e *EmulatorService) Play(serial string) error {
 		e.setStage("Failed: couldn't mount", 0, 0)
 		return err
 	}
+	e.mu.Lock()
+	e.activeMnt = mnt
+	e.mu.Unlock()
 	e.setStage("Preparing emulator", 0, 0)
 	app, err := pcsx2.Ensure(filepath.Join(e.dataDir, "emulator"), e.version)
 	if err != nil {
@@ -514,7 +378,12 @@ func (e *EmulatorService) Play(serial string) error {
 	e.stageDone, e.stageTotal = 0, 0
 	e.mu.Unlock()
 	go func() {
-		defer server.Unmount()
+		defer func() {
+			server.Unmount()
+			e.mu.Lock()
+			e.activeMnt = ""
+			e.mu.Unlock()
+		}()
 		defer stopTrace()
 		defer s.Close()
 		_ = cmd.Wait()
@@ -525,6 +394,21 @@ func (e *EmulatorService) Play(serial string) error {
 		}
 		e.mu.Unlock()
 	}()
+	return nil
+}
+
+// ServiceShutdown implements the Wails lifecycle hook: on app quit, kill
+// the emulator and unmount the game image so the next launch mounts clean.
+func (e *EmulatorService) ServiceShutdown() error {
+	if err := e.StopEmulator(); err != nil {
+		return err
+	}
+	e.mu.Lock()
+	mnt := e.activeMnt
+	e.mu.Unlock()
+	if mnt != "" {
+		unmountGUI(mnt)
+	}
 	return nil
 }
 
