@@ -8,16 +8,17 @@ set -euo pipefail
 cd "$(dirname "$0")/../../.." # gui/
 
 format=${1:?usage: package.sh <deb|rpm|archlinux>}
-case "$format" in
-deb) out=bin/cache22.deb ;;
-rpm) out=bin/cache22.rpm ;;
-archlinux) out=bin/cache22.pkg.tar.zst ;;
-*) echo "unknown format: $format" >&2; exit 1 ;;
-esac
-
 tag=$(git describe --tags 2>/dev/null || true)
 tag=${tag#v}
 : "${tag:=0.1.0}"
+goarch=$(go env GOARCH)
 
-PACKAGE_VERSION="$tag" GOARCH="$(go env GOARCH)" \
+case "$format" in
+deb) out="bin/cache22_${tag}_${goarch}.deb" ;;
+rpm) out="bin/cache22-${tag}.${goarch}.rpm" ;;
+archlinux) out="bin/cache22-${tag}-${goarch}.pkg.tar.zst" ;;
+*) echo "unknown format: $format" >&2; exit 1 ;;
+esac
+
+PACKAGE_VERSION="$tag" GOARCH="$goarch" \
 	nfpm package -f build/linux/nfpm/nfpm.yaml -p "$format" -t "$out"
